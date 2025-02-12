@@ -19,8 +19,16 @@
 package de.rwth.idsg.steve.ocpp.ws;
 
 import lombok.extern.slf4j.Slf4j;
+import org.apache.kafka.clients.producer.ProducerConfig;
+import org.apache.kafka.common.serialization.StringSerializer;
+import org.springframework.kafka.core.DefaultKafkaProducerFactory;
+import org.springframework.kafka.core.KafkaTemplate;
+import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
+
+import java.util.HashMap;
+import java.util.Map;
 
 /**
  * @author Sevket Goekay <sevketgokay@gmail.com>
@@ -28,6 +36,8 @@ import org.springframework.web.socket.WebSocketSession;
  */
 @Slf4j
 public final class WebSocketLogger {
+
+    private static final KafkaTemplate<String, String> kafkaTemplate = kafkaTemplate();
 
     private WebSocketLogger() { }
 
@@ -41,6 +51,7 @@ public final class WebSocketLogger {
 
     public static void sending(String chargeBoxId, WebSocketSession session, String msg) {
         log.info("[chargeBoxId={}, sessionId={}] Sending: {}", chargeBoxId, session.getId(), msg);
+        kafkaTemplate.send("out-coming", chargeBoxId, msg);
     }
 
     public static void sendingPing(String chargeBoxId, WebSocketSession session) {
@@ -53,6 +64,7 @@ public final class WebSocketLogger {
 
     public static void receivedText(String chargeBoxId, WebSocketSession session, String msg) {
         log.info("[chargeBoxId={}, sessionId={}] Received: {}", chargeBoxId, session.getId(), msg);
+        kafkaTemplate.send("in-coming", chargeBoxId, msg);
     }
 
     public static void receivedEmptyText(String chargeBoxId, WebSocketSession session) {
@@ -69,5 +81,17 @@ public final class WebSocketLogger {
         if (log.isErrorEnabled()) {
             log.error("[chargeBoxId=" + chargeBoxId + ", sessionId=" + session.getId() + "] Transport error", t);
         }
+    }
+
+    private static ProducerFactory<String, String> producerFactory() {
+        Map<String, Object> configProps = new HashMap<>();
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        return new DefaultKafkaProducerFactory<>(configProps);
+    }
+
+    private static KafkaTemplate<String, String> kafkaTemplate() {
+        return new KafkaTemplate<>(producerFactory());
     }
 }
