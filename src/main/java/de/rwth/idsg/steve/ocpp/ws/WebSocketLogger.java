@@ -18,6 +18,8 @@
  */
 package de.rwth.idsg.steve.ocpp.ws;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.kafka.clients.producer.ProducerConfig;
 import org.apache.kafka.common.serialization.StringSerializer;
@@ -38,6 +40,10 @@ import java.util.Map;
 public final class WebSocketLogger {
 
     private static final KafkaTemplate<String, String> kafkaTemplate = kafkaTemplate();
+    private static final ObjectMapper mapper = new ObjectMapper();
+    private static final String KAFKA_INCOMING_TOPIC = "incoming";
+    private static final String KAFKA_OUTGOING_TOPIC = "outgoing";
+    private static final String KAFKA_SERVER_ADDRESS = "localhost:9092";
 
     private WebSocketLogger() { }
 
@@ -51,7 +57,10 @@ public final class WebSocketLogger {
 
     public static void sending(String chargeBoxId, WebSocketSession session, String msg) {
         log.info("[chargeBoxId={}, sessionId={}] Sending: {}", chargeBoxId, session.getId(), msg);
-        kafkaTemplate.send("out-coming", chargeBoxId, msg);
+        try {
+            String kafkaMessage = mapper.writeValueAsString(new KafkaMessage(session.getId(), chargeBoxId, msg));
+            kafkaTemplate.send(KAFKA_OUTGOING_TOPIC, chargeBoxId, kafkaMessage);
+        } catch (JsonProcessingException ignored) {}
     }
 
     public static void sendingPing(String chargeBoxId, WebSocketSession session) {
@@ -64,7 +73,10 @@ public final class WebSocketLogger {
 
     public static void receivedText(String chargeBoxId, WebSocketSession session, String msg) {
         log.info("[chargeBoxId={}, sessionId={}] Received: {}", chargeBoxId, session.getId(), msg);
-        kafkaTemplate.send("in-coming", chargeBoxId, msg);
+        try {
+            String kafkaMessage = mapper.writeValueAsString(new KafkaMessage(session.getId(), chargeBoxId, msg));
+            kafkaTemplate.send(KAFKA_INCOMING_TOPIC, chargeBoxId, kafkaMessage);
+        } catch (JsonProcessingException ignored) {}
     }
 
     public static void receivedEmptyText(String chargeBoxId, WebSocketSession session) {
@@ -85,7 +97,7 @@ public final class WebSocketLogger {
 
     private static ProducerFactory<String, String> producerFactory() {
         Map<String, Object> configProps = new HashMap<>();
-        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, "localhost:9092");
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, KAFKA_SERVER_ADDRESS);
         configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
         return new DefaultKafkaProducerFactory<>(configProps);
@@ -94,4 +106,6 @@ public final class WebSocketLogger {
     private static KafkaTemplate<String, String> kafkaTemplate() {
         return new KafkaTemplate<>(producerFactory());
     }
+
+    record KafkaMessage(String sessionId, String chargeBoxId,String message) {}
 }
