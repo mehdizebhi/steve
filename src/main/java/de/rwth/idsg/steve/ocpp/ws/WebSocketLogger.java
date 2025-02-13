@@ -29,6 +29,7 @@ import org.springframework.kafka.core.ProducerFactory;
 import org.springframework.web.socket.CloseStatus;
 import org.springframework.web.socket.WebSocketSession;
 
+import java.time.Instant;
 import java.util.HashMap;
 import java.util.Map;
 
@@ -45,7 +46,8 @@ public final class WebSocketLogger {
     private static final String KAFKA_OUTGOING_TOPIC = "outgoing";
     private static final String KAFKA_SERVER_ADDRESS = "localhost:9092";
 
-    private WebSocketLogger() { }
+    private WebSocketLogger() {
+    }
 
     public static void connected(String chargeBoxId, WebSocketSession session) {
         log.info("[chargeBoxId={}, sessionId={}] Connection is established", chargeBoxId, session.getId());
@@ -58,9 +60,13 @@ public final class WebSocketLogger {
     public static void sending(String chargeBoxId, WebSocketSession session, String msg) {
         log.info("[chargeBoxId={}, sessionId={}] Sending: {}", chargeBoxId, session.getId(), msg);
         try {
-            String kafkaMessage = mapper.writeValueAsString(new KafkaMessage(session.getId(), chargeBoxId, msg));
+            String kafkaMessage = mapper.writeValueAsString(
+                    new KafkaMessage(session.getId(), chargeBoxId, msg, Instant.now().toEpochMilli())
+            );
             kafkaTemplate.send(KAFKA_OUTGOING_TOPIC, chargeBoxId, kafkaMessage);
-        } catch (JsonProcessingException ignored) {}
+        } catch (JsonProcessingException e) {
+            log.warn("Json processing error", e);
+        }
     }
 
     public static void sendingPing(String chargeBoxId, WebSocketSession session) {
@@ -74,9 +80,13 @@ public final class WebSocketLogger {
     public static void receivedText(String chargeBoxId, WebSocketSession session, String msg) {
         log.info("[chargeBoxId={}, sessionId={}] Received: {}", chargeBoxId, session.getId(), msg);
         try {
-            String kafkaMessage = mapper.writeValueAsString(new KafkaMessage(session.getId(), chargeBoxId, msg));
+            String kafkaMessage = mapper.writeValueAsString(
+                    new KafkaMessage(session.getId(), chargeBoxId, msg, Instant.now().toEpochMilli())
+            );
             kafkaTemplate.send(KAFKA_INCOMING_TOPIC, chargeBoxId, kafkaMessage);
-        } catch (JsonProcessingException ignored) {}
+        } catch (JsonProcessingException e) {
+            log.warn("Json processing error", e);
+        }
     }
 
     public static void receivedEmptyText(String chargeBoxId, WebSocketSession session) {
@@ -107,5 +117,6 @@ public final class WebSocketLogger {
         return new KafkaTemplate<>(producerFactory());
     }
 
-    record KafkaMessage(String sessionId, String chargeBoxId,String message) {}
+    record KafkaMessage(String sessionId, String chargeBoxId, String message, Long timestamp) {
+    }
 }
